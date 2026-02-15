@@ -14,11 +14,16 @@ struct CorrectnessResult {
 };
 
 struct PerfResult {
-  double ms;
-  std::string unit_name;
-  double unit_value;
-  std::string note;
+  double ms;              // GPU 执行时间（毫秒）
+  double cpu_ms;          // CPU 执行时间（毫秒）
+  std::string unit_name;  // 性能单位（如 GB/s, TFLOP/s）
+  double unit_value;      // 性能值（带宽或吞吐量）
+  std::string note;       // 其他说明信息
+  
+  size_t input_size;      // 输入数据大小（字节）
+  size_t output_size;     // 输出数据大小（字节）
 };
+
 
 struct OpEntry {
   std::string name;

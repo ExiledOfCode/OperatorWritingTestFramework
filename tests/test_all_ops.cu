@@ -30,7 +30,7 @@ TEST(AllOps, Correctness) {
   ASSERT_FALSE(reg.empty()) << "No ops registered. Did you forget REGISTER_OP?";
 
   // 读取文件中的算子名
-  std::unordered_set<std::string> operators_to_test = get_tested_operators("test_op_name.txt");
+  std::unordered_set<std::string> operators_to_test = get_tested_operators("test_op_name.sh");
 
   for (auto& e : reg) {
     if (operators_to_test.empty() || operators_to_test.find(e.name) != operators_to_test.end()) {
@@ -57,16 +57,19 @@ TEST(AllOps, Performance) {
 
   for (auto& e : reg) {
     if (operators_to_test.empty() || operators_to_test.find(e.name) != operators_to_test.end()) {
-      // 如果列表为空（未指定算子）或算子名在文件中
-      std::cout << "\n========== PERF: " << e.name << " ==========\n";
-      auto p = e.performance();
-      std::cout << "avg time: " << p.ms << " ms\n";
-      if (!p.unit_name.empty()) {
-        std::cout << p.unit_name << ": " << p.unit_value << "\n";
-      }
-      if (!p.note.empty()) {
-        std::cout << p.note << "\n";
-      }
+        std::cout << "\n========== PERF: " << e.name << " ==========\n";
+        auto p = e.performance();
+
+        std::cout <<"\t" << "GPU time: " << p.ms << " ms\n";
+        std::cout <<"\t" << "CPU time: " << p.cpu_ms << " ms\n";
+        if (!p.unit_name.empty()) {
+            std::cout <<"\t" << p.unit_name << ": " << p.unit_value << "\n";
+        }
+        std::cout <<"\t" << "Input size: " << p.input_size / (1024 * 1024) << " MB\n";
+        std::cout <<"\t" << "Output size: " << p.output_size / (1024 * 1024) << " MB\n";
+        if (!p.note.empty()) {
+            std::cout <<"\t" << "Note: " << p.note << "\n";
+        }
     }
   }
 }
