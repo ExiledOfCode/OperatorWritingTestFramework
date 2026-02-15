@@ -100,8 +100,8 @@ static CorrectnessResult run_cutlass_gemm_f32_correctness() {
 }
 
 static PerfResult run_cutlass_gemm_f32_perf() {
-  int M = 1024, N = 1024, K = 1024;
-
+  
+  size_t M = 1024, N = 1024, K = 1024;
   std::vector<float> hA((size_t)M * K, 1.f), hB((size_t)K * N, 1.f);
 
   float* dA = nullptr, * dB = nullptr, * dC = nullptr;
@@ -121,15 +121,13 @@ static PerfResult run_cutlass_gemm_f32_perf() {
     gemm_cutlass(dC, dA, dB, M, N, K);
   CUDA_CHECK(cudaDeviceSynchronize());
 
-  // 开始计时
+  // 开始计时：使用 cuda_time_ms 测量 GPU 执行时间
   int iters = 3;
-  auto start_time = std::chrono::high_resolution_clock::now();
-  for (int i = 0; i < iters; i++) 
-    gemm_cutlass(dC, dA, dB, M, N, K);
-  CUDA_CHECK(cudaDeviceSynchronize());
-  auto end_time = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> duration = end_time - start_time;
-  double ms = duration.count() * 1000.0 / iters;  // 转换为毫秒
+  double ms = cuda_time_ms([&]() {
+    for (int i = 0; i < iters; i++)
+      gemm_cutlass(dC, dA, dB, M, N, K);
+    CUDA_CHECK(cudaDeviceSynchronize());
+  }) / iters;  // cuda_time_ms 返回的是毫秒，所以这里直接除以迭代次数
 
   // 计算带宽（GB/s）
   double flops = 2.0 * (double)M * (double)N * (double)K;
@@ -143,7 +141,6 @@ static PerfResult run_cutlass_gemm_f32_perf() {
   auto cpu_end_time = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> cpu_duration = cpu_end_time - cpu_start_time;
   double cpu_ms = cpu_duration.count() * 1000.0 / iters;
-
   // 释放 GPU 内存
   cudaFree(dA); cudaFree(dB); cudaFree(dC);
 
@@ -155,7 +152,9 @@ static PerfResult run_cutlass_gemm_f32_perf() {
     tflops,                  // 性能值（计算吞吐量）
     "FLOPs = 2*M*N*K",       // 说明信息
     input_size,              // 输入数据大小（字节）
-    output_size             // 输出数据大小（字节）
+    output_size,             // 输出数据大小（字节）
+    {{M, K}, {K, N}},           // 输入数据的形状
+    {{M, N}}                    // 输出数据的形状
   };
 }
 

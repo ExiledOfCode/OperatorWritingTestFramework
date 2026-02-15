@@ -67,6 +67,24 @@ TEST(AllOps, Performance) {
         }
         std::cout <<"\t" << "Input size: " << p.input_size / (1024 * 1024) << " MB\n";
         std::cout <<"\t" << "Output size: " << p.output_size / (1024 * 1024) << " MB\n";
+        std::cout << "\tInput shape: ";
+        for (const auto& shape : p.input_format) {
+        std::cout << "{";
+        for (size_t i = 0; i < shape.size(); ++i) {
+            std::cout << shape[i] << (i == shape.size() - 1 ? "" : ", ");
+        }
+        std::cout << "} ";
+        }
+        std::cout << "\n";
+        std::cout << "\tOutput shape: ";
+        for (const auto& shape : p.output_format) {
+        std::cout << "{";
+        for (size_t i = 0; i < shape.size(); ++i) {
+            std::cout << shape[i] << (i == shape.size() - 1 ? "" : ", ");
+        }
+        std::cout << "} ";
+        }
+        std::cout << "\n";
         if (!p.note.empty()) {
             std::cout <<"\t" << "Note: " << p.note << "\n";
         }

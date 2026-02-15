@@ -115,7 +115,9 @@ static PerfResult run_vector_add_perf() {
     gbps,                    // 带宽值
     "bytes = read(A)+read(B)+write(C)",  // 其他说明
     input_size,              // 输入数据大小（字节）
-    output_size             // 输出数据大小（字节）
+    output_size,             // 输出数据大小（字节）
+    {{1, n}},
+    {{1, n}}
   };
 }
 

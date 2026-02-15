@@ -22,6 +22,8 @@ struct PerfResult {
   
   size_t input_size;      // 输入数据大小（字节）
   size_t output_size;     // 输出数据大小（字节）
+  std::vector<std::vector<size_t>> input_format;   // 输入的形状
+  std::vector<std::vector<size_t>> output_format;  // 输出的形状
 };
 
 
