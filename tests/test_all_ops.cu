@@ -1,0 +1,72 @@
+#include <gtest/gtest.h>
+#include <iostream>
+#include <fstream>
+#include <unordered_set>
+#include <string>
+#include <iomanip>
+#include "op_registry.hpp"
+
+// 获取要测试的算子集合
+std::unordered_set<std::string> get_tested_operators(const std::string& filename) {
+  std::unordered_set<std::string> operators;
+  std::ifstream file(filename);
+  if (!file.is_open()) {
+    std::cerr << "Failed to open file: " << filename << std::endl;
+    return operators;
+  }
+
+  std::string op_name;
+  while (std::getline(file, op_name)) {
+    if (!op_name.empty() && op_name[0] != '#') {
+      operators.insert(op_name);  // 将每行算子名插入到集合中
+    }
+  }
+  file.close();
+  return operators;
+}
+
+TEST(AllOps, Correctness) {
+  auto& reg = op_registry();
+  ASSERT_FALSE(reg.empty()) << "No ops registered. Did you forget REGISTER_OP?";
+
+  // 读取文件中的算子名
+  std::unordered_set<std::string> operators_to_test = get_tested_operators("test_op_name.txt");
+
+  for (auto& e : reg) {
+    if (operators_to_test.empty() || operators_to_test.find(e.name) != operators_to_test.end()) {
+      // 如果列表为空（未指定算子）或算子名在文件中
+      SCOPED_TRACE("Op: " + e.name);
+      auto r = e.correctness();
+      std::cout << "\n[Correctness] " << e.name
+                << " | " << r.metric_name << "=" << std::setprecision(10) << r.metric
+                << " | thr=" << r.threshold
+                << (r.note.empty() ? "" : (" | " + r.note))
+                << "\n";
+      ASSERT_TRUE(r.ok) << "Correctness failed for " << e.name;
+      ASSERT_LE(r.metric, r.threshold) << "Metric above threshold for " << e.name;
+    }
+  }
+}
+
+TEST(AllOps, Performance) {
+  auto& reg = op_registry();
+  ASSERT_FALSE(reg.empty()) << "No ops registered. Did you forget REGISTER_OP?";
+
+  // 读取文件中的算子名
+  std::unordered_set<std::string> operators_to_test = get_tested_operators("test_op_name.sh");
+
+  for (auto& e : reg) {
+    if (operators_to_test.empty() || operators_to_test.find(e.name) != operators_to_test.end()) {
+      // 如果列表为空（未指定算子）或算子名在文件中
+      std::cout << "\n========== PERF: " << e.name << " ==========\n";
+      auto p = e.performance();
+      std::cout << "avg time: " << p.ms << " ms\n";
+      if (!p.unit_name.empty()) {
+        std::cout << p.unit_name << ": " << p.unit_value << "\n";
+      }
+      if (!p.note.empty()) {
+        std::cout << p.note << "\n";
+      }
+    }
+  }
+}
