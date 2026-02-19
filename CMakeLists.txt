@@ -24,6 +24,7 @@ include_directories(
 file(GLOB_RECURSE SRC_FILES
   src/*.cu
   src/*.cpp
+  src/hand_gemm/*.cu
 )
 
 file(GLOB_RECURSE TEST_FILES
@@ -47,3 +48,12 @@ set_target_properties(test_runner PROPERTIES
 )
 
 add_test(NAME AllTests COMMAND test_runner)
+
+# ===== GPU 属性打印工具 =====
+add_executable(gpu_props
+  tool/gpu_props.cu
+)
+
+set_target_properties(gpu_props PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+)

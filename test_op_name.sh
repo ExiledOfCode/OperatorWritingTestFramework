@@ -1,2 +1,3 @@
-cutlass_gemm_f32 
-vector_add
+# cutlass_gemm_f32 
+# vector_add
+gemm_demo1
