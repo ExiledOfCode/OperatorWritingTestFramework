@@ -31,16 +31,20 @@ TEST(AllOps, Correctness) {
 
     // 读取文件中的算子名
     std::unordered_set<std::string> operators_to_test = get_tested_operators("../test_op_name.sh");
-
     for (auto &e : reg) {
         if (operators_to_test.empty() || operators_to_test.find(e.name) != operators_to_test.end()) {
-            // 如果列表为空（未指定算子）或算子名在文件中
             SCOPED_TRACE("Op: " + e.name);
             auto r = e.correctness();
-            std::cout << "\n[Correctness] " << e.name << " | " << r.metric_name << "=" << std::setprecision(10) << r.metric << " | thr=" << r.threshold
-                      << (r.note.empty() ? "" : (" | " + r.note)) << "\n";
-            ASSERT_TRUE(r.ok) << "Correctness failed for " << e.name;
-            ASSERT_LE(r.metric, r.threshold) << "Metric above threshold for " << e.name;
+            bool pass = r.ok && (r.metric <= r.threshold);
+            if (pass) {
+                std::cout << "\033[1;32m" << "[AC] " << "\033[0m" << e.name << "  " << r.metric_name << "=" << std::setprecision(10) << r.metric
+                          << " (thr=" << r.threshold << ")" << (r.note.empty() ? "" : ("  " + r.note)) << "\n";
+            } else {
+                std::cout << "\033[1;31m" << "[WA] " << "\033[0m" << e.name << "  " << r.metric_name << "=" << std::setprecision(10) << r.metric
+                          << " (thr=" << r.threshold << ")" << (r.note.empty() ? "" : ("  " + r.note)) << "\n";
+            }
+
+            ASSERT_TRUE(pass) << "Correctness failed for " << e.name;
         }
     }
 }

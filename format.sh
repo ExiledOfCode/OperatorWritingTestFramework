@@ -18,12 +18,12 @@ if [ "$#" -gt 0 ]; then
   for file in "$@"; do
     if [ -f "$file" ]; then
       clang-format -i -style=file "$file"
-      echo "Formatted: $file"
+    #   echo "Formatted: $file"
     else
       echo "Warning: $file not found, skipped."
     fi
   done
-  echo "Done."
+#   echo "Done."
   exit 0
 fi
 
@@ -39,7 +39,7 @@ for d in "${FORMAT_DIRS[@]}"; do
 done
 
 if [ "${#DIRS_EXIST[@]}" -eq 0 ]; then
-  echo "No target directories exist. Nothing to format."
+#   echo "No target directories exist. Nothing to format."
   exit 0
 fi
 

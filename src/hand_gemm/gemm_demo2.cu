@@ -20,21 +20,46 @@ static void gemm_cpu(const float *A, const float *B, float *C, int M, int N, int
         }
     }
 }
-// global memory: Read: 2MNK, Write: MN
-__global__ void gemm_demo1(const float *dA, const float *dB, float *dC, int M, int N, int K) {
+// shared memory:
+// read:
+// write:
+// global memory:
+// read:     (M/bm)*(N/bn)个块，每个块(bm*K+K*bn)次访存，总计：KMN(1/bm+1/bn)次
+// write:    MN
+template <unsigned int BLOCK_SIZE>
+__global__ void gemm_demo2(const float *dA, const float *dB, float *dC, int M, int N, int K) {
 
     int col = threadIdx.x + blockDim.x * blockIdx.x;
     int row = threadIdx.y + blockDim.y * blockIdx.y;
 
-    int idx = row * N + col;
-    if (row < M && col < N) {
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
 
+    extern __shared__ float smem[];
+
+    float *A_shared = smem;
+    float *B_shared = smem + BLOCK_SIZE * BLOCK_SIZE;
+
+    if (row < M && col < N) {
         float tmp = 0.0f;
-        for (int i = 0; i < K; i++) {
-            int dA_idx = row * K + i;
-            int dB_idx = i * N + col;
-            tmp += dA[dA_idx] * dB[dB_idx];
+        for (int s = 0; s < K / BLOCK_SIZE; s++) {
+
+            int A_shared_idx = ty * BLOCK_SIZE + tx;
+            int B_shared_idx = ty * BLOCK_SIZE + tx;
+            int A_idx = row * K + tx + s * BLOCK_SIZE;
+            int B_idx = (ty + s * BLOCK_SIZE) * N + col;
+
+            A_shared[A_shared_idx] = dA[A_idx];
+            B_shared[B_shared_idx] = dB[B_idx];
+            __syncthreads();
+            for (int i = 0; i < BLOCK_SIZE; i++) {
+                int A_shared_idx = ty * BLOCK_SIZE + i;
+                int B_shared_idx = i * BLOCK_SIZE + tx;
+                tmp += A_shared[A_shared_idx] * B_shared[B_shared_idx];
+            }
+            __syncthreads();
         }
+        int idx = row * N + col;
         dC[idx] = tmp;
     }
 }
@@ -45,14 +70,15 @@ static void gemm_hand(float *dC, const float *dA, const float *dB, int M, int N,
     dim3 block(16, 16);
     // grid 按输出矩阵 C 的 (M,N) 覆盖
     dim3 grid((N + block.x - 1) / block.x, (M + block.y - 1) / block.y);
-    gemm_demo1<<<grid, block>>>(dA, dB, dC, M, N, K);
+    int shared_size = 2 * 16 * 16 * sizeof(float);
+    gemm_demo2<16><<<grid, block, shared_size>>>(dA, dB, dC, M, N, K);
     CUDA_CHECK(cudaGetLastError());
 }
 
 // ======= 你要的：两个“启动函数” =======
 
 static CorrectnessResult correctness() {
-    int M = 256, N = 512, K = 512;
+    int M = 256, N = 1024, K = 512;
 
     std::vector<float> hA((size_t)M * K), hB((size_t)K * N), hRef((size_t)M * N), hOut((size_t)M * N);
 
@@ -96,7 +122,7 @@ static PerfResult perf() {
     std::vector<float> hA((size_t)M * K, 1.f), hB((size_t)K * N, 1.f);
 
     float *dA = nullptr, *dB = nullptr, *dC = nullptr;
-    size_t input_size = 2 * M * K * sizeof(float); // 输入数据大小 A 和 B
+    size_t input_size = (M*K + K*N) * sizeof(float); // 输入数据大小 A 和 B
     size_t output_size = M * N * sizeof(float);    // 输出数据大小 C
 
     // 分配 GPU 内存
@@ -153,4 +179,4 @@ static PerfResult perf() {
 }
 
 // ======= 一行注册（你想要的“宏包裹”） =======
-REGISTER_OP_FUNCS("gemm_demo1", correctness, perf);
+REGISTER_OP_FUNCS("gemm_demo2", correctness, perf);

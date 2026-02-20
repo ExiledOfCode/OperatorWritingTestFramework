@@ -43,7 +43,8 @@ inline void register_op_entry(OpEntry e) {
     op_registry().push_back(std::move(e));
 }
 
-template <class CorrectFn, class PerfFn> inline void register_op_t(const char *name, CorrectFn &&c, PerfFn &&p) {
+template <class CorrectFn, class PerfFn>
+inline void register_op_t(const char *name, CorrectFn &&c, PerfFn &&p) {
     OpEntry e;
     e.name = name;
     e.correctness = std::function<CorrectnessResult()>(std::forward<CorrectFn>(c));

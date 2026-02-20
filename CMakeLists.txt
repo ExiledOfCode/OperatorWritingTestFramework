@@ -41,7 +41,12 @@ target_link_libraries(test_runner
   GTest::gtest
   GTest::gtest_main
   pthread
+  ${CUDA_cublas_LIBRARY}
 )
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  target_compile_options(test_runner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G>)
+endif()
 
 set_target_properties(test_runner PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
