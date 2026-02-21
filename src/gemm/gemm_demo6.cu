@@ -22,63 +22,87 @@ static void gemm_cpu(const float *A, const float *B, float *C, int M, int N, int
 }
 // shared memory:
 // read:
-// write:
+// write:   MN
 // global memory:
 // read:     (M/bm)*(N/bn)个块，每个块(bm*K+K*bn)次访存，总计：KMN(1/bm+1/bn)次
 // write:    MN
-template <unsigned int BLOCK_SIZE>
-__global__ void gemm_demo2(const float *dA, const float *dB, float *dC, int M, int N, int K) {
+#define FETCH_FLOAT4(pointer) (reinterpret_cast<float4 *>(&(pointer))[0])
+template <unsigned int BLOCK_SIZE, unsigned int STRIDE>
+__global__ void gemm(const float *dA, const float *dB, float *dC, int M, int N, int K) {
 
-    int col = threadIdx.x + blockDim.x * blockIdx.x;
-    int row = threadIdx.y + blockDim.y * blockIdx.y;
+    int block_col = (blockDim.x * STRIDE) * blockIdx.x;
+    int block_row = (blockDim.y * STRIDE) * blockIdx.y;
+    int col = threadIdx.x + block_col;
+    int row = threadIdx.y + block_row;
 
     int tx = threadIdx.x;
     int ty = threadIdx.y;
 
     extern __shared__ float smem[];
+    int TILE = BLOCK_SIZE * STRIDE;
 
     float *A_shared = smem;
-    float *B_shared = smem + BLOCK_SIZE * BLOCK_SIZE;
+    float *B_shared = smem + TILE * TILE;
 
-    if (row < M && col < N) {
-        float tmp = 0.0f;
-        for (int s = 0; s < K / BLOCK_SIZE; s++) {
+    if (block_row + TILE <= M && block_col + TILE <= N) {
+        float tmp[STRIDE][STRIDE] = {0.0f};
+        for (int s = 0; s < K / TILE; s++) {
+            // 全局内存到shared mem
+            for (int y_stride = 0; y_stride < STRIDE; y_stride++) {
+                for (int x_stride = 0; x_stride < STRIDE; x_stride++) {
+                    int A_shared_idx = (ty + y_stride * BLOCK_SIZE) * BLOCK_SIZE * STRIDE + tx + x_stride * BLOCK_SIZE;
+                    int B_shared_idx = (ty + y_stride * BLOCK_SIZE) * BLOCK_SIZE * STRIDE + tx + x_stride * BLOCK_SIZE;
+                    int A_idx = (row + BLOCK_SIZE * y_stride) * K + tx + s * TILE + x_stride * BLOCK_SIZE;
+                    int B_idx = (ty + s * TILE + BLOCK_SIZE * y_stride) * N + col + x_stride * BLOCK_SIZE;
 
-            int A_shared_idx = ty * BLOCK_SIZE + tx;
-            int B_shared_idx = ty * BLOCK_SIZE + tx;
-            int A_idx = row * K + tx + s * BLOCK_SIZE;
-            int B_idx = (ty + s * BLOCK_SIZE) * N + col;
-
-            A_shared[A_shared_idx] = dA[A_idx];
-            B_shared[B_shared_idx] = dB[B_idx];
+                    A_shared[A_shared_idx] = dA[A_idx];
+                    B_shared[B_shared_idx] = dB[B_idx];
+                }
+            }
             __syncthreads();
-            for (int i = 0; i < BLOCK_SIZE; i++) {
-                int A_shared_idx = ty * BLOCK_SIZE + i;
-                int B_shared_idx = i * BLOCK_SIZE + tx;
-                tmp += A_shared[A_shared_idx] * B_shared[B_shared_idx];
+            // shared mem 到寄存器
+            for (int y_stride = 0; y_stride < STRIDE; y_stride++) {
+                for (int x_stride = 0; x_stride < STRIDE; x_stride++) {
+                    for (int i = 0; i < TILE; i++) {
+                        int A_shared_idx = (ty + y_stride * BLOCK_SIZE) * TILE + i;
+                        int B_shared_idx = i * TILE + tx + x_stride * BLOCK_SIZE;
+                        tmp[y_stride][x_stride] += A_shared[A_shared_idx] * B_shared[B_shared_idx];
+                    }
+                }
             }
             __syncthreads();
         }
-        int idx = row * N + col;
-        dC[idx] = tmp;
+
+        // 寄存器写回到内存
+        for (int y_stride = 0; y_stride < STRIDE; y_stride++) {
+            for (int x_stride = 0; x_stride < STRIDE; x_stride++) {
+                int idx = (row + y_stride * BLOCK_SIZE) * N + col + x_stride * BLOCK_SIZE;
+                dC[idx] = tmp[y_stride][x_stride];
+            }
+        }
     }
 }
 
 // CUTLASS GPU 实现
 static void gemm_hand(float *dC, const float *dA, const float *dB, int M, int N, int K) {
 
-    dim3 block(16, 16);
-    // grid 按输出矩阵 C 的 (M,N) 覆盖
-    dim3 grid((N + block.x - 1) / block.x, (M + block.y - 1) / block.y);
-    int shared_size = 2 * 16 * 16 * sizeof(float);
-    gemm_demo2<16><<<grid, block, shared_size>>>(dA, dB, dC, M, N, K);
+    constexpr int BLOCK_SIZE = 16;
+    constexpr int STRIDE = 2;
+    constexpr int TILE = BLOCK_SIZE * STRIDE;
+
+    int shared_size = 2 * STRIDE * STRIDE * 16 * 16 * sizeof(float);
+
+    dim3 block(BLOCK_SIZE, BLOCK_SIZE);
+    dim3 grid((N + TILE - 1) / TILE, (M + TILE - 1) / TILE);
+
+    gemm<16, STRIDE><<<grid, block, shared_size>>>(dA, dB, dC, M, N, K);
     CUDA_CHECK(cudaGetLastError());
 }
 
 // ======= 你要的：两个“启动函数” =======
 
 static CorrectnessResult correctness() {
-    int M = 256, N = 1024, K = 512;
+    int M = 256, N = 512, K = 512;
 
     std::vector<float> hA((size_t)M * K), hB((size_t)K * N), hRef((size_t)M * N), hOut((size_t)M * N);
 
@@ -109,6 +133,7 @@ static CorrectnessResult correctness() {
         max_abs = std::max(max_abs, std::abs(hRef[i] - hOut[i]));
     }
 
+    // dump_to_csv("gemm_dump.csv", hA.data(), hB.data(), hOut.data(), hRef.data(), M, N, K);
     cudaFree(dA);
     cudaFree(dB);
     cudaFree(dC);
@@ -122,7 +147,7 @@ static PerfResult perf() {
     std::vector<float> hA((size_t)M * K, 1.f), hB((size_t)K * N, 1.f);
 
     float *dA = nullptr, *dB = nullptr, *dC = nullptr;
-    size_t input_size = (M*K + K*N) * sizeof(float); // 输入数据大小 A 和 B
+    size_t input_size = 2 * M * K * sizeof(float); // 输入数据大小 A 和 B
     size_t output_size = M * N * sizeof(float);    // 输出数据大小 C
 
     // 分配 GPU 内存
@@ -179,4 +204,4 @@ static PerfResult perf() {
 }
 
 // ======= 一行注册（你想要的“宏包裹”） =======
-REGISTER_OP_FUNCS("gemm_demo2", correctness, perf);
+REGISTER_OP_FUNCS("gemm_demo6", correctness, perf);
