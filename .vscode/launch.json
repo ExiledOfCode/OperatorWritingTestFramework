@@ -1,0 +1,16 @@
+{
+    "version":"0.2.0",
+    "configurations": [
+        {
+            "name": "CUDA C++: Launch",
+            "type": "cuda-gdb",
+            "request": "launch",
+            "program": "/home/exiled_code/workspce/gemm_demo/build/test_runner"
+        },
+        {
+            "name":"CUDA C++: Attach",
+            "type":"cuda-gdb",
+            "request": "attach"
+        }
+    ]
+}
