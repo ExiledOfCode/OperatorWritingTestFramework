@@ -36,7 +36,7 @@ struct MatrixView {
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4 *>(&(pointer))[0])
 
 template <unsigned int N_NUM_PRE_BLOCK, unsigned int M_NUM_PER_BLOCK, unsigned int K_NUM_PER_BLOCK, unsigned int NUM_PER_THREAD, unsigned int REG_PER_THREAD>
-__global__ void frame_gemm_demo5(float *dA, float *dB, float *dC, int M, int N, int K) {
+__global__ void frame_gemm_demo7(float *dA, float *dB, float *dC, int M, int N, int K) {
 
     MatrixView<float> A{dA, K};
     MatrixView<float> B{dB, N};
@@ -86,7 +86,7 @@ __global__ void frame_gemm_demo5(float *dA, float *dB, float *dC, int M, int N, 
     }
     for (int i = 0; i < REG_PER_THREAD; i++) {
         for (int j = 0; j < REG_PER_THREAD; j++) {
-            C(block_base_y + reg_ty * REG_PER_THREAD + i, block_base_x + reg_tx * REG_PER_THREAD + j) = tmp[i * REG_PER_THREAD + j];
+            C(block_base_y + reg_ty * 2 + i, block_base_x + reg_tx * 2 + j) = tmp[i * REG_PER_THREAD + j];
         }
     }
 }
@@ -108,7 +108,7 @@ static void gemm_hand(float *dC, float *dA, float *dB, int M, int N, int K) {
     dim3 block(M_NUM_PER_BLOCK / NUM_PER_THREAD, N_NUM_PRE_BLOCK);
     dim3 grid((N + TILE - 1) / TILE, (M + TILE - 1) / TILE);
 
-    frame_gemm_demo5<N_NUM_PRE_BLOCK, M_NUM_PER_BLOCK, K_NUM_PER_BLOCK, NUM_PER_THREAD, REG_PER_THREAD><<<grid, block>>>(dA, dB, dC, M, N, K);
+    frame_gemm_demo7<N_NUM_PRE_BLOCK, M_NUM_PER_BLOCK, K_NUM_PER_BLOCK, NUM_PER_THREAD, REG_PER_THREAD><<<grid, block>>>(dA, dB, dC, M, N, K);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -217,4 +217,4 @@ static PerfResult perf() {
 }
 
 // ======= 一行注册（你想要的“宏包裹”） =======
-REGISTER_OP_FUNCS("frame_gemm_demo5", correctness, perf);
+REGISTER_OP_FUNCS("frame_gemm_demo7", correctness, perf);
