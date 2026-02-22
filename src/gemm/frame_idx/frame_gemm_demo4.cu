@@ -35,7 +35,7 @@ struct MatrixView {
 
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4 *>(&(pointer))[0])
 
-template <unsigned int N_NUM_PRE_BLOCK, unsigned int M_NUM_PER_BLOCK, unsigned int K_NUM_PER_BLOCK, unsigned int NUM_PER_THREAD>
+template <unsigned int M_NUM_PER_BLOCK, unsigned int N_NUM_PER_BLOCK, unsigned int K_NUM_PER_BLOCK, unsigned int NUM_PER_THREAD>
 __global__ void frame_gemm_demo4(float *dA, float *dB, float *dC, int M, int N, int K) {
 
     MatrixView<float> A{dA, K};
@@ -51,8 +51,8 @@ __global__ void frame_gemm_demo4(float *dA, float *dB, float *dC, int M, int N, 
     // int col = tx + block_base_x;
     int row = ty + block_base_y;
 
-    __shared__ float A_shared[N_NUM_PRE_BLOCK][K_NUM_PER_BLOCK];
-    __shared__ float B_shared[K_NUM_PER_BLOCK][N_NUM_PRE_BLOCK];
+    __shared__ float A_shared[M_NUM_PER_BLOCK][K_NUM_PER_BLOCK];
+    __shared__ float B_shared[K_NUM_PER_BLOCK][N_NUM_PER_BLOCK];
 
     float tmp[NUM_PER_THREAD] = {0.0f};
     for (int s = 0; s < K / K_NUM_PER_BLOCK; s++) {
@@ -79,15 +79,15 @@ static void gemm_hand(float *dC, float *dA, float *dB, int M, int N, int K) {
     constexpr int STRIDE = 1;
     constexpr int TILE = BLOCK_SIZE * STRIDE;
 
-    constexpr int N_NUM_PRE_BLOCK = 16;
+    constexpr int N_NUM_PER_BLOCK = 16;
     constexpr int M_NUM_PER_BLOCK = 16;
     constexpr int K_NUM_PER_BLOCK = 16;
     constexpr int NUM_PER_THREAD = 4;
 
-    dim3 block(M_NUM_PER_BLOCK / 4, N_NUM_PRE_BLOCK);
+    dim3 block(M_NUM_PER_BLOCK / 4, N_NUM_PER_BLOCK);
     dim3 grid((N + TILE - 1) / TILE, (M + TILE - 1) / TILE);
 
-    frame_gemm_demo4<N_NUM_PRE_BLOCK, M_NUM_PER_BLOCK, K_NUM_PER_BLOCK, NUM_PER_THREAD><<<grid, block>>>(dA, dB, dC, M, N, K);
+    frame_gemm_demo4<M_NUM_PER_BLOCK, N_NUM_PER_BLOCK, K_NUM_PER_BLOCK, NUM_PER_THREAD><<<grid, block>>>(dA, dB, dC, M, N, K);
     CUDA_CHECK(cudaGetLastError());
 }
 

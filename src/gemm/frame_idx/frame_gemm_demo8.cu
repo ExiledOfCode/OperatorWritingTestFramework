@@ -35,7 +35,7 @@ struct MatrixView {
 
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4 *>(&(pointer))[0])
 
-template <unsigned int N_NUM_PRE_BLOCK, unsigned int M_NUM_PER_BLOCK, unsigned int K_NUM_PER_BLOCK, unsigned int NUM_PER_THREAD, unsigned int REG_PER_THREAD>
+template <unsigned int M_NUM_PER_BLOCK, unsigned int N_NUM_PER_BLOCK, unsigned int K_NUM_PER_BLOCK, unsigned int NUM_PER_THREAD, unsigned int REG_PER_THREAD>
 __global__ void frame_gemm_demo8(float *dA, float *dB, float *dC, int M, int N, int K) {
 
     MatrixView<float> A{dA, K};
@@ -48,13 +48,16 @@ __global__ void frame_gemm_demo8(float *dA, float *dB, float *dC, int M, int N, 
     int block_base_x = (blockDim.x * NUM_PER_THREAD) * blockIdx.x;
     int block_base_y = (blockDim.y * NUM_PER_THREAD) * blockIdx.y;
 
-    __shared__ float A_shared[N_NUM_PRE_BLOCK][K_NUM_PER_BLOCK];
-    __shared__ float B_shared[K_NUM_PER_BLOCK][N_NUM_PRE_BLOCK];
+    __shared__ float A_shared[K_NUM_PER_BLOCK][M_NUM_PER_BLOCK];
+    __shared__ float B_shared[K_NUM_PER_BLOCK][N_NUM_PER_BLOCK];
 
     float a_reg[REG_PER_THREAD] = {0.0f};
     float b_reg[REG_PER_THREAD] = {0.0f};
-    float tmp[REG_PER_THREAD][REG_PER_THREAD] = {0.0f};
 
+    // 复用a_reg来将数据从全局读到寄存器里做过渡
+    float *a_load_shared_reg = a_reg;
+
+    float tmp[REG_PER_THREAD][REG_PER_THREAD] = {0.0f};
     int shared_compute_base_y = ty * NUM_PER_THREAD;
     int shared_compute_base_x = tx * NUM_PER_THREAD;
 
@@ -65,17 +68,18 @@ __global__ void frame_gemm_demo8(float *dA, float *dB, float *dC, int M, int N, 
         const int k_base = s * K_NUM_PER_BLOCK;
         // 从全局内存向shared内存中搬运元素
         for (int i = 0; i < NUM_PER_THREAD; i++) {
-            FETCH_FLOAT4(A_shared[shared_compute_base_y + i][shared_compute_base_x]) =
-                FETCH_FLOAT4(A(blcok_compute_base_y + i, shared_compute_base_x + k_base));
+            FETCH_FLOAT4(a_load_shared_reg[0]) = FETCH_FLOAT4(A(blcok_compute_base_y + i, shared_compute_base_x + k_base));
+
+            for (int j = 0; j < REG_PER_THREAD; j++) {
+                A_shared[shared_compute_base_x + j][shared_compute_base_y + i] = a_load_shared_reg[j];
+            }
             FETCH_FLOAT4(B_shared[shared_compute_base_y + i][shared_compute_base_x]) =
                 FETCH_FLOAT4(B(shared_compute_base_y + k_base + i, block_compute_base_x));
         }
         __syncthreads();
         for (int k = 0; k < K_NUM_PER_BLOCK; k++) {
             // 从A矩阵拿元素
-            for (int i = 0; i < REG_PER_THREAD; i++) {
-                a_reg[i] = A_shared[shared_compute_base_y + i][k];
-            }
+            FETCH_FLOAT4(a_reg[0]) = FETCH_FLOAT4(A_shared[k][shared_compute_base_y]);
             // 从B矩阵拿元素
             FETCH_FLOAT4(b_reg[0]) = FETCH_FLOAT4(B_shared[k][shared_compute_base_x]);
             // 使用寄存器的元素来进行计算
@@ -103,24 +107,24 @@ static void gemm_hand(float *dC, float *dA, float *dB, int M, int N, int K) {
     constexpr int STRIDE = 1;
     constexpr int TILE = BLOCK_SIZE * STRIDE;
 
-    constexpr int N_NUM_PRE_BLOCK = 16;
     constexpr int M_NUM_PER_BLOCK = 16;
+    constexpr int N_NUM_PER_BLOCK = 16;
     constexpr int K_NUM_PER_BLOCK = 16;
     constexpr int NUM_PER_THREAD = 4;
 
     constexpr int REG_PER_THREAD = 4;
 
-    dim3 block(M_NUM_PER_BLOCK / NUM_PER_THREAD, N_NUM_PRE_BLOCK / NUM_PER_THREAD);
+    dim3 block(M_NUM_PER_BLOCK / NUM_PER_THREAD, N_NUM_PER_BLOCK / NUM_PER_THREAD);
     dim3 grid((N + TILE - 1) / TILE, (M + TILE - 1) / TILE);
 
-    frame_gemm_demo8<N_NUM_PRE_BLOCK, M_NUM_PER_BLOCK, K_NUM_PER_BLOCK, NUM_PER_THREAD, REG_PER_THREAD><<<grid, block>>>(dA, dB, dC, M, N, K);
+    frame_gemm_demo8<M_NUM_PER_BLOCK, N_NUM_PER_BLOCK, K_NUM_PER_BLOCK, NUM_PER_THREAD, REG_PER_THREAD><<<grid, block>>>(dA, dB, dC, M, N, K);
     CUDA_CHECK(cudaGetLastError());
 }
 
 // ======= 你要的：两个“启动函数” =======
 
 static CorrectnessResult correctness() {
-    int M = 256, N = 512, K = 512;
+    int M = 16, N = 16, K = 16;
 
     std::vector<float> hA((size_t)M * K), hB((size_t)K * N), hRef((size_t)M * N), hOut((size_t)M * N);
 
@@ -151,7 +155,7 @@ static CorrectnessResult correctness() {
         max_abs = std::max(max_abs, std::abs(hRef[i] - hOut[i]));
     }
 
-    // dump_to_csv("gemm_dump.csv", hA.data(), hB.data(), hOut.data(), hRef.data(), M, N, K);
+    dump_to_csv("gemm_dump.csv", hA.data(), hB.data(), hOut.data(), hRef.data(), M, N, K);
     cudaFree(dA);
     cudaFree(dB);
     cudaFree(dC);

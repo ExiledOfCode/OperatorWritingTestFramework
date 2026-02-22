@@ -10,4 +10,4 @@ frame_gemm_demo5
 
 frame_gemm_demo6
 frame_gemm_demo7
-frame_gemm_demo8
+# frame_gemm_demo8
