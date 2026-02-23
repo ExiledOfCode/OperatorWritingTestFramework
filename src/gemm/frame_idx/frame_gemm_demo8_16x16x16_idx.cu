@@ -36,7 +36,7 @@ struct MatrixView {
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4 *>(&(pointer))[0])
 
 template <unsigned int M_NUM_PER_BLOCK, unsigned int N_NUM_PER_BLOCK, unsigned int K_NUM_PER_BLOCK, unsigned int NUM_PER_THREAD, unsigned int REG_PER_THREAD>
-__global__ void frame_gemm_demo7(float *dA, float *dB, float *dC, int M, int N, int K) {
+__global__ void frame_gemm_demo8_origin_idx(float *dA, float *dB, float *dC, int M, int N, int K) {
 
     MatrixView<float> A{dA, K};
     MatrixView<float> B{dB, N};
@@ -48,8 +48,8 @@ __global__ void frame_gemm_demo7(float *dA, float *dB, float *dC, int M, int N, 
     int block_base_x = (blockDim.x * NUM_PER_THREAD) * blockIdx.x;
     int block_base_y = (blockDim.y * NUM_PER_THREAD) * blockIdx.y;
 
-    __shared__ float A_shared[K_NUM_PER_BLOCK][M_NUM_PER_BLOCK];
-    __shared__ float B_shared[K_NUM_PER_BLOCK][N_NUM_PER_BLOCK];
+    __shared__ float A_shared[2][K_NUM_PER_BLOCK][M_NUM_PER_BLOCK];
+    __shared__ float B_shared[2][K_NUM_PER_BLOCK][N_NUM_PER_BLOCK];
 
     float a_reg[REG_PER_THREAD] = {0.0f};
     float b_reg[REG_PER_THREAD] = {0.0f};
@@ -64,24 +64,34 @@ __global__ void frame_gemm_demo7(float *dA, float *dB, float *dC, int M, int N, 
     int blcok_compute_base_y = block_base_y + shared_compute_base_y;
     int block_compute_base_x = block_base_x + shared_compute_base_x;
 
-    for (int s = 0; s < K / K_NUM_PER_BLOCK; s++) {
+    int cnt = 0;
+    for (int i = 0; i < NUM_PER_THREAD; i++) {
+        FETCH_FLOAT4(a_load_shared_reg[0]) = FETCH_FLOAT4(A(blcok_compute_base_y + i, shared_compute_base_x));
+
+        for (int j = 0; j < REG_PER_THREAD; j++) {
+            A_shared[cnt][shared_compute_base_x + j][shared_compute_base_y + i] = a_load_shared_reg[j];
+        }
+        FETCH_FLOAT4(B_shared[cnt][shared_compute_base_y + i][shared_compute_base_x]) = FETCH_FLOAT4(B(shared_compute_base_y + i, block_compute_base_x));
+    }
+    __syncthreads();
+    for (int s = 1; s < K / K_NUM_PER_BLOCK; s++) {
+        cnt ^= 1;
         const int k_base = s * K_NUM_PER_BLOCK;
         // 从全局内存向shared内存中搬运元素
         for (int i = 0; i < NUM_PER_THREAD; i++) {
             FETCH_FLOAT4(a_load_shared_reg[0]) = FETCH_FLOAT4(A(blcok_compute_base_y + i, shared_compute_base_x + k_base));
 
             for (int j = 0; j < REG_PER_THREAD; j++) {
-                A_shared[shared_compute_base_x + j][shared_compute_base_y + i] = a_load_shared_reg[j];
+                A_shared[cnt][shared_compute_base_x + j][shared_compute_base_y + i] = a_load_shared_reg[j];
             }
-            FETCH_FLOAT4(B_shared[shared_compute_base_y + i][shared_compute_base_x]) =
+            FETCH_FLOAT4(B_shared[cnt][shared_compute_base_y + i][shared_compute_base_x]) =
                 FETCH_FLOAT4(B(shared_compute_base_y + k_base + i, block_compute_base_x));
         }
-        __syncthreads();
         for (int k = 0; k < K_NUM_PER_BLOCK; k++) {
             // 从A矩阵拿元素
-            FETCH_FLOAT4(a_reg[0]) = FETCH_FLOAT4(A_shared[k][shared_compute_base_y]);
+            FETCH_FLOAT4(a_reg[0]) = FETCH_FLOAT4(A_shared[cnt ^ 1][k][shared_compute_base_y]);
             // 从B矩阵拿元素
-            FETCH_FLOAT4(b_reg[0]) = FETCH_FLOAT4(B_shared[k][shared_compute_base_x]);
+            FETCH_FLOAT4(b_reg[0]) = FETCH_FLOAT4(B_shared[cnt ^ 1][k][shared_compute_base_x]);
             // 使用寄存器的元素来进行计算
             for (int i = 0; i < REG_PER_THREAD; i++) {
                 for (int j = 0; j < REG_PER_THREAD; j++) {
@@ -91,7 +101,20 @@ __global__ void frame_gemm_demo7(float *dA, float *dB, float *dC, int M, int N, 
         }
         __syncthreads();
     }
-
+    cnt ^= 1;
+    for (int k = 0; k < K_NUM_PER_BLOCK; k++) {
+        // 从A矩阵拿元素
+        FETCH_FLOAT4(a_reg[0]) = FETCH_FLOAT4(A_shared[cnt ^ 1][k][shared_compute_base_y]);
+        // 从B矩阵拿元素
+        FETCH_FLOAT4(b_reg[0]) = FETCH_FLOAT4(B_shared[cnt ^ 1][k][shared_compute_base_x]);
+        // 使用寄存器的元素来进行计算
+        for (int i = 0; i < REG_PER_THREAD; i++) {
+            for (int j = 0; j < REG_PER_THREAD; j++) {
+                tmp[i][j] += a_reg[i] * b_reg[j];
+            }
+        }
+    }
+    __syncthreads();
     // 将寄存器中的元素放回到全局内存中
     for (int i = 0; i < REG_PER_THREAD; i++) {
         for (int j = 0; j < REG_PER_THREAD; j++) {
@@ -117,7 +140,7 @@ static void gemm_hand(float *dC, float *dA, float *dB, int M, int N, int K) {
     dim3 block(M_NUM_PER_BLOCK / NUM_PER_THREAD, N_NUM_PER_BLOCK / NUM_PER_THREAD);
     dim3 grid((N + TILE - 1) / TILE, (M + TILE - 1) / TILE);
 
-    frame_gemm_demo7<M_NUM_PER_BLOCK, N_NUM_PER_BLOCK, K_NUM_PER_BLOCK, NUM_PER_THREAD, REG_PER_THREAD><<<grid, block>>>(dA, dB, dC, M, N, K);
+    frame_gemm_demo8_origin_idx<M_NUM_PER_BLOCK, N_NUM_PER_BLOCK, K_NUM_PER_BLOCK, NUM_PER_THREAD, REG_PER_THREAD><<<grid, block>>>(dA, dB, dC, M, N, K);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -125,6 +148,7 @@ static void gemm_hand(float *dC, float *dA, float *dB, int M, int N, int K) {
 
 static CorrectnessResult correctness() {
     int M = 256, N = 512, K = 512;
+
     std::vector<float> hA((size_t)M * K), hB((size_t)K * N), hRef((size_t)M * N), hOut((size_t)M * N);
 
     std::mt19937 gen(123);
@@ -225,4 +249,4 @@ static PerfResult perf() {
 }
 
 // ======= 一行注册（你想要的“宏包裹”） =======
-REGISTER_OP_FUNCS("frame_gemm_demo7", correctness, perf);
+REGISTER_OP_FUNCS("frame_gemm_demo8_origin_idx", correctness, perf);

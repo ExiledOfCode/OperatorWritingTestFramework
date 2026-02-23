@@ -35,7 +35,7 @@ inline void dump_matrix_csv(std::ofstream &ofs, const std::string &name, const f
     ofs << name << "\n";
     for (int r = 0; r < rows; ++r) {
         for (int c = 0; c < cols; ++c) {
-            ofs << std::setprecision(8) << data[r * cols + c];
+            ofs << std::setprecision(4) << data[r * cols + c];
             if (c != cols - 1)
                 ofs << ",";
         }
