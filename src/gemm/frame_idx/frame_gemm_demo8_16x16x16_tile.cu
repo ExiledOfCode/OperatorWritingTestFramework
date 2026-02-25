@@ -36,7 +36,7 @@ struct MatrixView {
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4 *>(&(pointer))[0])
 
 template <unsigned int M_NUM_PER_BLOCK, unsigned int N_NUM_PER_BLOCK, unsigned int K_NUM_PER_BLOCK, unsigned int NUM_PER_THREAD, unsigned int REG_PER_THREAD>
-__global__ void frame_gemm_demo8_origin_idx(float *dA, float *dB, float *dC, int M, int N, int K) {
+__global__ void frame_gemm_demo8_16x16x16_tile(float *dA, float *dB, float *dC, int M, int N, int K) {
 
     MatrixView<float> A{dA, K};
     MatrixView<float> B{dB, N};
@@ -140,7 +140,7 @@ static void gemm_hand(float *dC, float *dA, float *dB, int M, int N, int K) {
     dim3 block(M_NUM_PER_BLOCK / NUM_PER_THREAD, N_NUM_PER_BLOCK / NUM_PER_THREAD);
     dim3 grid((N + TILE - 1) / TILE, (M + TILE - 1) / TILE);
 
-    frame_gemm_demo8_origin_idx<M_NUM_PER_BLOCK, N_NUM_PER_BLOCK, K_NUM_PER_BLOCK, NUM_PER_THREAD, REG_PER_THREAD><<<grid, block>>>(dA, dB, dC, M, N, K);
+    frame_gemm_demo8_16x16x16_tile<M_NUM_PER_BLOCK, N_NUM_PER_BLOCK, K_NUM_PER_BLOCK, NUM_PER_THREAD, REG_PER_THREAD><<<grid, block>>>(dA, dB, dC, M, N, K);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -178,7 +178,7 @@ static CorrectnessResult correctness() {
         max_abs = std::max(max_abs, std::abs(hRef[i] - hOut[i]));
     }
 
-    dump_to_csv("gemm_dump.csv", hA.data(), hB.data(), hOut.data(), hRef.data(), M, N, K);
+    // dump_to_csv("gemm_dump.csv", hA.data(), hB.data(), hOut.data(), hRef.data(), M, N, K);
     cudaFree(dA);
     cudaFree(dB);
     cudaFree(dC);
@@ -249,4 +249,4 @@ static PerfResult perf() {
 }
 
 // ======= 一行注册（你想要的“宏包裹”） =======
-REGISTER_OP_FUNCS("frame_gemm_demo8_origin_idx", correctness, perf);
+REGISTER_OP_FUNCS("frame_gemm_demo8_16x16x16_tile", correctness, perf);

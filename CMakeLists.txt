@@ -11,7 +11,7 @@ endif()
 
 enable_testing()
 find_package(GTest REQUIRED)
-
+find_package(CUDAToolkit REQUIRED)
 # ===== CUTLASS 本地路径 =====
 set(CUTLASS_PATH ${PROJECT_SOURCE_DIR}/cutlass)
 
@@ -38,12 +38,12 @@ add_executable(test_runner
 )
 
 target_link_libraries(test_runner
-  GTest::gtest
-  GTest::gtest_main
-  pthread
-  ${CUDA_cublas_LIBRARY}
+    PRIVATE
+    GTest::gtest
+    GTest::gtest_main
+    pthread
+    CUDA::cublas
 )
-
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   target_compile_options(test_runner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G>)
 endif()

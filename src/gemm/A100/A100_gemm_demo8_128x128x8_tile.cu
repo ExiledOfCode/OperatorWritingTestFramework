@@ -35,23 +35,15 @@ struct MatrixView {
 
 #define FETCH_FLOAT4(pointer) (reinterpret_cast<float4 *>(&(pointer))[0])
 
-template <unsigned int BLOCK_SIZE_M, unsigned int BLOCK_SIZE_N, unsigned int BLOCK_SIZE_K, unsigned int THREAD_SIZE_X, unsigned int THREAD_SIZE_Y>
-__global__ void frame_gemm_demo8_128x128x8_idx(float *dA, float *dB, float *dC, int M, int N, int K) {
+template <unsigned int BLOCK_TILE_SIZE_M, unsigned int BLOCK_TILE_SIZE_N, unsigned int BLOCK_TILE_SIZE_K, unsigned int THREAD_NUM_X, unsigned int THREAD_NUM_Y>
+__global__ void A100_gemm_demo8_128x128x8_tile(float *dA, float *dB, float *dC, int M, int N, int K) {
 
     MatrixView<float> A{dA, K};
     MatrixView<float> B{dB, N};
     MatrixView<float> C{dC, N};
 
-    __shared__ float shared_A[2][BLOCK_SIZE_K][BLOCK_SIZE_M];
-    __shared__ float shared_B[2][BLOCK_SIZE_K][BLOCK_SIZE_N];
-
-    float reg_a[THREAD_SIZE_Y] = {0.0f};
-    float reg_b[THREAD_SIZE_X] = {0.0f};
-
-    // 复用a_reg来将数据从全局读到寄存器里做过渡
-    float *reg_load_shared_a = reg_a;
-
-    float tmp[THREAD_SIZE_Y][THREAD_SIZE_X] = {0.0f};
+    __shared__ float shared_A[2][BLOCK_TILE_SIZE_K][BLOCK_TILE_SIZE_M];
+    __shared__ float shared_B[2][BLOCK_TILE_SIZE_K][BLOCK_TILE_SIZE_N];
 
     int tx = threadIdx.x;
     int ty = threadIdx.y;
@@ -59,45 +51,106 @@ __global__ void frame_gemm_demo8_128x128x8_idx(float *dA, float *dB, float *dC, 
     int bx = blockIdx.x;
     int by = blockIdx.y;
 
-    int block_base_C_x = (blockDim.x * THREAD_SIZE_X) * blockIdx.x;
-    int block_base_C_y = (blockDim.y * THREAD_SIZE_Y) * blockIdx.y;
+    int block_tile_C_start_x = bx * (blockDim.x * THREAD_NUM_X);
+    int block_tile_C_start_y = by * (blockDim.y * THREAD_NUM_Y);
 
-    int block_idx = ty * blockDim.x + tx;
+    int thread_tile_C_start_x = block_tile_C_start_x + tx * THREAD_NUM_X;
+    int thread_tile_C_start_y = block_tile_C_start_y + ty * THREAD_NUM_Y;
 
-    int shared_compute_base_A_x = block_idx % BLOCK_SIZE_K; 
-    int shared_compute_base_A_y = block_idx / BLOCK_SIZE_K; 
+    int thread_shared_tile_A_start_y = ty * THREAD_NUM_Y;
+    int thread_shared_tile_B_start_x = tx * THREAD_NUM_X;
+
+    alignas(16) float reg_A[THREAD_NUM_Y] = {0.0f};
+    alignas(16) float reg_B[THREAD_NUM_X] = {0.0f};
+
+    float tmp[THREAD_NUM_Y][THREAD_NUM_X] = {0.0f};
+    float * reg_load_shared_A = reg_A;
     
-    int shared_compute_base_B_x = block_idx % BLOCK_SIZE_N; 
-    int shared_compute_base_B_y = block_idx / BLOCK_SIZE_N;
-
-
-    for (int s = 0; s < K / BLOCK_SIZE_K; s++) {
-        const int k_base = s * BLOCK_SIZE_K;
-
-
-        __syncthreads();
-
-        
-
-        __syncthreads();
+    int cnt = 0;
+    for (int j = 0; j < THREAD_NUM_Y; j++) {
+        for (int i = 0; i < THREAD_NUM_X; i += 4) {
+            FETCH_FLOAT4(reg_load_shared_A[i]) = FETCH_FLOAT4(A(thread_tile_C_start_y + j, i));
+        }
+        for (int i = 0; i < THREAD_NUM_X; i ++) {
+              shared_A[0][i][thread_shared_tile_A_start_y + j] = reg_load_shared_A[i];
+        }
     }
 
+    for (int j = 0; j < THREAD_NUM_Y; j++) {
+        for (int i = 0; i < THREAD_NUM_X; i += 4) {
+            FETCH_FLOAT4(shared_B[0][j][thread_shared_tile_B_start_x + i]) = FETCH_FLOAT4(B(j, thread_tile_C_start_x + i));
+        }
+    }
 
+    __syncthreads();
+
+    for (int k_base = BLOCK_TILE_SIZE_K; k_base < K; k_base += BLOCK_TILE_SIZE_K) {
+        for (int j = 0; j < THREAD_NUM_Y; j++) {
+            for (int i = 0; i < THREAD_NUM_X; i += 4) {
+                FETCH_FLOAT4(reg_load_shared_A[i]) = FETCH_FLOAT4(A(thread_tile_C_start_y + j, k_base + i));
+            }
+            for (int i = 0; i < THREAD_NUM_X; i ++) {
+                shared_A[cnt ^ 1][i][thread_shared_tile_A_start_y + j] = reg_load_shared_A[i];
+            }
+        }
+
+        for (int j = 0; j < THREAD_NUM_Y; j++) {
+            for (int i = 0; i < THREAD_NUM_X; i += 4) {
+                FETCH_FLOAT4(shared_B[cnt ^ 1][j][thread_shared_tile_B_start_x + i]) = FETCH_FLOAT4(B(k_base + j, thread_tile_C_start_x + i));
+            }
+        }
+
+        for (int k = 0; k < BLOCK_TILE_SIZE_K; k++) {
+            for (int i = 0; i < THREAD_NUM_Y; i += 4) {
+                FETCH_FLOAT4(reg_A[i]) = FETCH_FLOAT4(shared_A[cnt][k][thread_shared_tile_A_start_y + i]);
+            }
+            for (int i = 0; i < THREAD_NUM_X; i += 4) {
+                FETCH_FLOAT4(reg_B[i]) = FETCH_FLOAT4(shared_B[cnt][k][thread_shared_tile_B_start_x + i]);
+            }
+            for (int i = 0; i < THREAD_NUM_Y; i++) {
+                for (int j = 0; j < THREAD_NUM_X; j++) {
+                    tmp[i][j] += reg_A[i] * reg_B[j];
+                }
+            }
+        }
+        cnt ^= 1;
+        __syncthreads();
+    }
+    for (int k = 0; k < BLOCK_TILE_SIZE_K; k++) {
+        for (int i = 0; i < THREAD_NUM_Y; i += 4) {
+            FETCH_FLOAT4(reg_A[i]) = FETCH_FLOAT4(shared_A[cnt][k][thread_shared_tile_A_start_y + i]);
+        }
+        for (int i = 0; i < THREAD_NUM_X; i += 4) {
+            FETCH_FLOAT4(reg_B[i]) = FETCH_FLOAT4(shared_B[cnt][k][thread_shared_tile_B_start_x + i]);
+        }
+        for (int i = 0; i < THREAD_NUM_Y; i++) {
+            for (int j = 0; j < THREAD_NUM_X; j++) {
+                tmp[i][j] += reg_A[i] * reg_B[j];
+            }
+        }
+    }
+    __syncthreads();
+
+    for (int i = 0; i < THREAD_NUM_Y; i++) {
+        for (int j = 0; j < THREAD_NUM_X; j += 4) {
+            FETCH_FLOAT4(C(thread_tile_C_start_y + i, thread_tile_C_start_x + j)) = FETCH_FLOAT4(tmp[i][j]);
+        }
+    }
 }
 
 // CUTLASS GPU 实现
 static void gemm_hand(float *dC, float *dA, float *dB, int M, int N, int K) {
-    constexpr int BLOCK_SIZE_M = 128;
-    constexpr int BLOCK_SIZE_N = 128;
-    constexpr int BLOCK_SIZE_K = 8;
+    constexpr int BLOCK_TILE_SIZE_M = 128;
+    constexpr int BLOCK_TILE_SIZE_N = 128;
+    constexpr int BLOCK_TILE_SIZE_K = 8;
 
     constexpr int THREAD_SIZE_X = 8;
     constexpr int THREAD_SIZE_Y = 8;
 
-    dim3 block(BLOCK_SIZE_N / THREAD_SIZE_X, BLOCK_SIZE_M / THREAD_SIZE_Y);
-    dim3 grid((N + BLOCK_SIZE_N - 1) / BLOCK_SIZE_N, (M + BLOCK_SIZE_M - 1) / BLOCK_SIZE_M);
+    dim3 block(BLOCK_TILE_SIZE_N / THREAD_SIZE_X, BLOCK_TILE_SIZE_M / THREAD_SIZE_Y);
+    dim3 grid((N + BLOCK_TILE_SIZE_N - 1) / BLOCK_TILE_SIZE_N, (M + BLOCK_TILE_SIZE_M - 1) / BLOCK_TILE_SIZE_M);
 
-    frame_gemm_demo8_128x128x8_idx<BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, THREAD_SIZE_X, THREAD_SIZE_Y><<<grid, block>>>(dA, dB, dC, M, N, K);
+    A100_gemm_demo8_128x128x8_tile<BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K, THREAD_SIZE_X, THREAD_SIZE_Y><<<grid, block>>>(dA, dB, dC, M, N, K);
 
     CUDA_CHECK(cudaGetLastError());
 }
@@ -105,7 +158,7 @@ static void gemm_hand(float *dC, float *dA, float *dB, int M, int N, int K) {
 // ======= 你要的：两个“启动函数” =======
 
 static CorrectnessResult correctness() {
-    int M = 16, N = 16, K = 16;
+    int M = 128, N = 128, K = 128;
 
     std::vector<float> hA((size_t)M * K), hB((size_t)K * N), hRef((size_t)M * N), hOut((size_t)M * N);
 
@@ -136,7 +189,13 @@ static CorrectnessResult correctness() {
         max_abs = std::max(max_abs, std::abs(hRef[i] - hOut[i]));
     }
 
-    // dump_to_csv("gemm_dump.csv", hA.data(), hB.data(), hOut.data(), hRef.data(), M, N, K);
+    // dump_to_csv_any("gemm_dump.csv", {
+    //                                      {"A", hA.data(), {M, K}},
+    //                                      {"B", hB.data(), {K, N}},
+    //                                      {"C_gpu", hOut.data(), {M, N}},
+    //                                      {"C_cpu", hRef.data(), {M, N}},
+    //                                  });
+
     cudaFree(dA);
     cudaFree(dB);
     cudaFree(dC);
@@ -207,4 +266,4 @@ static PerfResult perf() {
 }
 
 // ======= 一行注册（你想要的“宏包裹”） =======
-REGISTER_OP_FUNCS("frame_gemm_demo8_128x128x8_idx", correctness, perf);
+REGISTER_OP_FUNCS("A100_gemm_demo8_128x128x8_tile", correctness, perf);

@@ -92,7 +92,7 @@ static CorrectnessResult run_cutlass_gemm_f32_correctness() {
 }
 
 static PerfResult run_cutlass_gemm_f32_perf() {
-    size_t M = 1024, N = 1024, K = 1024;
+    size_t M = 4096, N = 4096, K = 4096;
     std::vector<float> hA((size_t)M * K, 1.f), hB((size_t)K * N, 1.f);
 
     float *dA = nullptr, *dB = nullptr, *dC = nullptr;
@@ -127,9 +127,9 @@ static PerfResult run_cutlass_gemm_f32_perf() {
 
     // 计算 CPU 执行时间
     auto cpu_start_time = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < iters / 2; i++) {
-        gemm_cpu(hA.data(), hB.data(), hA.data(), M, N, K); // 使用 CPU 计算
-    }
+    // for (int i = 0; i < iters / 2; i++) {
+    //     gemm_cpu(hA.data(), hB.data(), hA.data(), M, N, K); // 使用 CPU 计算
+    // }
     auto cpu_end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> cpu_duration = cpu_end_time - cpu_start_time;
     double cpu_ms = cpu_duration.count() * 1000.0 / iters / 2;
