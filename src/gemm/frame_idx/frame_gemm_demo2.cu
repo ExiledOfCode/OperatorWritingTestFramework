@@ -97,7 +97,7 @@ __global__ void frame_gemm_demo2(const float *dA, const float *dB, float *dC, in
     SharedTile<BLOCK_SIZE, float> shared_B{smem + BLOCK_SIZE * BLOCK_SIZE};
 
     float tmp = 0.0f;
-    
+
     for (int s = 0; s < K / BLOCK_SIZE; s++) {
         int k_base = s * BLOCK_SIZE;
 
@@ -113,7 +113,6 @@ __global__ void frame_gemm_demo2(const float *dA, const float *dB, float *dC, in
         __syncthreads();
     }
     C(map.thread2grid_row(), map.thread2grid_col()) = tmp;
-
 }
 
 // CUTLASS GPU 实现

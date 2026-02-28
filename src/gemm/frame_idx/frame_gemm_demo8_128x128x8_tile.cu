@@ -64,15 +64,15 @@ __global__ void frame_gemm_demo8_128x128x8_tile(float *dA, float *dB, float *dC,
     alignas(16) float reg_B[THREAD_NUM_X] = {0.0f};
 
     float tmp[THREAD_NUM_Y][THREAD_NUM_X] = {0.0f};
-    float * reg_load_shared_A = reg_A;
-    
+    float *reg_load_shared_A = reg_A;
+
     int cnt = 0;
     for (int j = 0; j < THREAD_NUM_Y; j++) {
         for (int i = 0; i < THREAD_NUM_X; i += 4) {
             FETCH_FLOAT4(reg_load_shared_A[i]) = FETCH_FLOAT4(A(thread_tile_C_start_y + j, i));
         }
-        for (int i = 0; i < THREAD_NUM_X; i ++) {
-              shared_A[0][i][thread_shared_tile_A_start_y + j] = reg_load_shared_A[i];
+        for (int i = 0; i < THREAD_NUM_X; i++) {
+            shared_A[0][i][thread_shared_tile_A_start_y + j] = reg_load_shared_A[i];
         }
     }
 
@@ -89,7 +89,7 @@ __global__ void frame_gemm_demo8_128x128x8_tile(float *dA, float *dB, float *dC,
             for (int i = 0; i < THREAD_NUM_X; i += 4) {
                 FETCH_FLOAT4(reg_load_shared_A[i]) = FETCH_FLOAT4(A(thread_tile_C_start_y + j, k_base + i));
             }
-            for (int i = 0; i < THREAD_NUM_X; i ++) {
+            for (int i = 0; i < THREAD_NUM_X; i++) {
                 shared_A[cnt ^ 1][i][thread_shared_tile_A_start_y + j] = reg_load_shared_A[i];
             }
         }
@@ -150,7 +150,8 @@ static void gemm_hand(float *dC, float *dA, float *dB, int M, int N, int K) {
     dim3 block(BLOCK_TILE_SIZE_N / THREAD_SIZE_X, BLOCK_TILE_SIZE_M / THREAD_SIZE_Y);
     dim3 grid((N + BLOCK_TILE_SIZE_N - 1) / BLOCK_TILE_SIZE_N, (M + BLOCK_TILE_SIZE_M - 1) / BLOCK_TILE_SIZE_M);
 
-    frame_gemm_demo8_128x128x8_tile<BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K, THREAD_SIZE_X, THREAD_SIZE_Y><<<grid, block>>>(dA, dB, dC, M, N, K);
+    frame_gemm_demo8_128x128x8_tile<BLOCK_TILE_SIZE_M, BLOCK_TILE_SIZE_N, BLOCK_TILE_SIZE_K, THREAD_SIZE_X, THREAD_SIZE_Y>
+        <<<grid, block>>>(dA, dB, dC, M, N, K);
 
     CUDA_CHECK(cudaGetLastError());
 }
@@ -220,13 +221,13 @@ static PerfResult perf() {
     CUDA_CHECK(cudaMemcpy(dA, hA.data(), hA.size() * sizeof(float), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(dB, hB.data(), hB.size() * sizeof(float), cudaMemcpyHostToDevice));
 
+    int iters = 1;
     // 预热：进行一些内核调用
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < iters; i++)
         gemm_hand(dC, dA, dB, M, N, K);
     CUDA_CHECK(cudaDeviceSynchronize());
 
     // 开始计时：使用 cuda_time_ms 测量 GPU 执行时间
-    int iters = 10;
     double ms = cuda_time_ms([&]() {
                     for (int i = 0; i < iters; i++)
                         gemm_hand(dC, dA, dB, M, N, K);

@@ -64,15 +64,15 @@ __global__ void A100_gemm_demo8_128x128x8_tile(float *dA, float *dB, float *dC, 
     alignas(16) float reg_B[THREAD_NUM_X] = {0.0f};
 
     float tmp[THREAD_NUM_Y][THREAD_NUM_X] = {0.0f};
-    float * reg_load_shared_A = reg_A;
-    
+    float *reg_load_shared_A = reg_A;
+
     int cnt = 0;
     for (int j = 0; j < THREAD_NUM_Y; j++) {
         for (int i = 0; i < THREAD_NUM_X; i += 4) {
             FETCH_FLOAT4(reg_load_shared_A[i]) = FETCH_FLOAT4(A(thread_tile_C_start_y + j, i));
         }
-        for (int i = 0; i < THREAD_NUM_X; i ++) {
-              shared_A[0][i][thread_shared_tile_A_start_y + j] = reg_load_shared_A[i];
+        for (int i = 0; i < THREAD_NUM_X; i++) {
+            shared_A[0][i][thread_shared_tile_A_start_y + j] = reg_load_shared_A[i];
         }
     }
 
@@ -89,7 +89,7 @@ __global__ void A100_gemm_demo8_128x128x8_tile(float *dA, float *dB, float *dC, 
             for (int i = 0; i < THREAD_NUM_X; i += 4) {
                 FETCH_FLOAT4(reg_load_shared_A[i]) = FETCH_FLOAT4(A(thread_tile_C_start_y + j, k_base + i));
             }
-            for (int i = 0; i < THREAD_NUM_X; i ++) {
+            for (int i = 0; i < THREAD_NUM_X; i++) {
                 shared_A[cnt ^ 1][i][thread_shared_tile_A_start_y + j] = reg_load_shared_A[i];
             }
         }

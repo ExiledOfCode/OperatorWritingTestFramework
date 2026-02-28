@@ -48,7 +48,7 @@ __global__ void gemm_demo3(const float *dA, const float *dB, float *dC, int M, i
         float tmp[STRIDE][STRIDE] = {0.0f};
         for (int s = 0; s < K / TILE; s++) {
             // 全局内存到shared mem
-#pragma unroll  // 展开 14.96444798ms，不展开18.40156746ms
+#pragma unroll // 展开 14.96444798ms，不展开18.40156746ms
             for (int y_stride = 0; y_stride < STRIDE; y_stride++) {
                 for (int x_stride = 0; x_stride < STRIDE; x_stride++) {
                     int A_shared_idx = (ty + y_stride * BLOCK_SIZE) * BLOCK_SIZE * STRIDE + tx + x_stride * BLOCK_SIZE;

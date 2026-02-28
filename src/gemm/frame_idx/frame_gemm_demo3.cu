@@ -100,7 +100,7 @@ __global__ void frame_gemm_demo3(const float *__restrict__ dA, const float *__re
     SharedTile<TILE, float> shared_A{smem};
     SharedTile<TILE, float> shared_B{smem + TILE * TILE};
 
-    float tC[STRIDE][STRIDE]={0.0f};
+    float tC[STRIDE][STRIDE] = {0.0f};
 
     const int num_k_tiles = K / TILE;
 

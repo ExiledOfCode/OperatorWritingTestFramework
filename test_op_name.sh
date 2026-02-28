@@ -2,7 +2,6 @@
 # cutlass_gemm_f32
 # cublas_gemm_f32
 
-
 # gemm_demo1
 # gemm_demo2
 # gemm_demo3
@@ -24,3 +23,5 @@
 # reduce_demo6
 # reduce_demo7
 # reduce_demo8
+
+transpose_demo3

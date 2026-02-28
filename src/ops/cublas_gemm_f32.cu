@@ -1,7 +1,7 @@
-#include <cublas_v2.h>
 #include <algorithm>
 #include <chrono> // 用于计时
 #include <cmath>
+#include <cublas_v2.h>
 #include <iostream>
 #include <random>
 #include <vector>
@@ -39,20 +39,17 @@ static void gemm_cublas(float *dC, const float *dA, const float *dB, int M, int 
     }
 
     float alpha = 1.0f;
-    float beta  = 0.0f;
+    float beta = 0.0f;
 
     // 这里的 m,n,k 是按 column-major 的矩阵维度：
     // C_col 是 (N x M)，B_col 是 (N x K)，A_col 是 (K x M)
     // 所以：m=N, n=M, k=K
-    cublasStatus_t st = cublasSgemm(
-        handle,
-        CUBLAS_OP_N, CUBLAS_OP_N,
-        /*m=*/N, /*n=*/M, /*k=*/K,
-        &alpha,
-        /*A=*/dB, /*lda=*/N,   // B_col: (N x K)
-        /*B=*/dA, /*ldb=*/K,   // A_col: (K x M)
-        &beta,
-        /*C=*/dC, /*ldc=*/N    // C_col: (N x M) -> same memory as row-major C(MxN)
+    cublasStatus_t st = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                                    /*m=*/N, /*n=*/M, /*k=*/K, &alpha,
+                                    /*A=*/dB, /*lda=*/N, // B_col: (N x K)
+                                    /*B=*/dA, /*ldb=*/K, // A_col: (K x M)
+                                    &beta,
+                                    /*C=*/dC, /*ldc=*/N // C_col: (N x M) -> same memory as row-major C(MxN)
     );
 
     if (st != CUBLAS_STATUS_SUCCESS) {
@@ -68,8 +65,10 @@ static CorrectnessResult run_cublas_gemm_f32_correctness() {
 
     std::mt19937 gen(123);
     std::uniform_real_distribution<float> dist(-1.f, 1.f);
-    for (auto &x : hA) x = dist(gen);
-    for (auto &x : hB) x = dist(gen);
+    for (auto &x : hA)
+        x = dist(gen);
+    for (auto &x : hB)
+        x = dist(gen);
 
     gemm_cpu(hA.data(), hB.data(), hRef.data(), M, N, K);
 
@@ -105,7 +104,7 @@ static PerfResult run_cublas_gemm_f32_perf() {
     std::vector<float> hA((size_t)M * K, 1.f), hB((size_t)K * N, 1.f);
 
     float *dA = nullptr, *dB = nullptr, *dC = nullptr;
-    size_t input_size  = (size_t)(M * K + K * N) * sizeof(float);
+    size_t input_size = (size_t)(M * K + K * N) * sizeof(float);
     size_t output_size = (size_t)(M * N) * sizeof(float);
 
     CUDA_CHECK(cudaMalloc(&dA, hA.size() * sizeof(float)));
@@ -116,16 +115,19 @@ static PerfResult run_cublas_gemm_f32_perf() {
     CUDA_CHECK(cudaMemcpy(dB, hB.data(), hB.size() * sizeof(float), cudaMemcpyHostToDevice));
 
     // 预热
-    for (int i = 0; i < 2; i++) gemm_cublas(dC, dA, dB, (int)M, (int)N, (int)K);
+    for (int i = 0; i < 2; i++)
+        gemm_cublas(dC, dA, dB, (int)M, (int)N, (int)K);
     CUDA_CHECK(cudaDeviceSynchronize());
 
     int iters = 10;
     double ms = cuda_time_ms([&]() {
-        for (int i = 0; i < iters; i++) gemm_cublas(dC, dA, dB, (int)M, (int)N, (int)K);
-        CUDA_CHECK(cudaDeviceSynchronize());
-    }) / iters;
+                    for (int i = 0; i < iters; i++)
+                        gemm_cublas(dC, dA, dB, (int)M, (int)N, (int)K);
+                    CUDA_CHECK(cudaDeviceSynchronize());
+                }) /
+                iters;
 
-    double flops  = 2.0 * (double)M * (double)N * (double)K;
+    double flops = 2.0 * (double)M * (double)N * (double)K;
     double tflops = flops / (ms / 1000.0) / 1e12;
 
     // CPU时间你这里本来就不测也行，保持一致返回一个测量值
@@ -135,17 +137,7 @@ static PerfResult run_cublas_gemm_f32_perf() {
     cudaFree(dB);
     cudaFree(dC);
 
-    return PerfResult{
-        (double)ms,
-        cpu_ms,
-        "TFLOP/s",
-        tflops,
-        "FLOPs = 2*M*N*K",
-        input_size,
-        output_size,
-        {{M, K}, {K, N}},
-        {{M, N}}
-    };
+    return PerfResult{(double)ms, cpu_ms, "TFLOP/s", tflops, "FLOPs = 2*M*N*K", input_size, output_size, {{M, K}, {K, N}}, {{M, N}}};
 }
 
 // 注册

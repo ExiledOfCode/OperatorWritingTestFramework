@@ -41,7 +41,7 @@ __global__ void reduce_demo7(const float *dA, float *dY, int M, int K) {
     int tx = threadIdx.x;
     int bx = blockIdx.x;
 
-    volatile __shared__ float smem[256];    // 如果不加volatile会错误，因为编译器优化了smem的读取，会去寄存器里面读取
+    volatile __shared__ float smem[256]; // 如果不加volatile会错误，因为编译器优化了smem的读取，会去寄存器里面读取
     float acc = 0.0f;
     for (int i = tx; i < K; i += blockDim.x)
         acc += dA[bx * K + i];

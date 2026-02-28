@@ -3,7 +3,7 @@ project(cuda_op_library LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_ARCHITECTURES 80) # A100 = sm80
+set(CMAKE_CUDA_ARCHITECTURES 80-real 80-virtual)# A100 = sm80
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -44,8 +44,14 @@ target_link_libraries(test_runner
     pthread
     CUDA::cublas
 )
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   target_compile_options(test_runner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G>)
+endif()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Ncu")
+  message(STATUS "Build type: Ncu (Release + -lineinfo)")
+  target_compile_options(test_runner PRIVATE -lineinfo)
 endif()
 
 set_target_properties(test_runner PROPERTIES

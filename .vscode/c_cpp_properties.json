@@ -5,9 +5,10 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "/usr/local/cuda-12.8/include",
-                "/home/exiled_code/workspce/cutlass/include/cutlass",
-                "/home/exiled_code/workspce/cutlass/include/cute",
-                "/home/exiled_code/workspce/cutlass/tools/util/include", 
+                "${workspaceFolder}/third_party/cutlass/include/cutlass",
+                "${workspaceFolder}/third_party/cutlass/include/cute",
+                "${workspaceFolder}/third_party/cutlass/tools/util/include", 
+                "${workspaceFolder}/include",
             ],
             "defines": [
                 "__CUDACC__"

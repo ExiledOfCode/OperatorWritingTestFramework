@@ -92,13 +92,12 @@ __global__ void frame_gemm_demo1(const float *dA, const float *dB, float *dC, in
 
     GemmMap<BLOCK_SIZE> map;
     float tmp = 0.0f;
-    
+
     for (int i = 0; i < K; i++) {
         tmp += A(map.thread2grid_row(), i) * B(i, map.thread2grid_col());
     }
-    
-    C(map.thread2grid_row(), map.thread2grid_col()) = tmp;
 
+    C(map.thread2grid_row(), map.thread2grid_col()) = tmp;
 }
 
 // CUTLASS GPU 实现

@@ -41,7 +41,7 @@ __global__ void reduce_demo8(const float *dA, float *dY, int M, int K) {
     int bx = blockIdx.x;
 
     int lane = tx & 31;
-    int wid  = tx >> 5;
+    int wid = tx >> 5;
     int num_warps = (blockDim.x + 31) >> 5;
 
     __shared__ float smem[32];
@@ -52,14 +52,15 @@ __global__ void reduce_demo8(const float *dA, float *dY, int M, int K) {
 
     acc = warp_reduce_sum(acc);
 
-    if (lane == 0) 
+    if (lane == 0)
         smem[wid] = acc;
     __syncthreads();
 
     if (wid == 0) {
         float v = (lane < num_warps) ? smem[lane] : 0.0f;
         v = warp_reduce_sum(v);
-        if (lane == 0) dY[bx] = v;
+        if (lane == 0)
+            dY[bx] = v;
     }
 }
 

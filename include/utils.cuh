@@ -3,11 +3,11 @@
 #include <cuda_runtime.h>
 #include <fstream>
 #include <functional>
+#include <initializer_list>
 #include <iomanip>
 #include <iostream>
-#include <string>
-#include <initializer_list>
 #include <numeric>
+#include <string>
 #include <vector>
 
 #define CUDA_CHECK(call)                                                                                                                                       \
@@ -57,7 +57,7 @@ static size_t numel(const std::vector<int> &shape) {
 }
 
 static void dump_tensor_csv(std::ofstream &ofs, const std::string &name, const float *data, const std::vector<int> &shape) {
-    ofs << std::fixed << std::setprecision(3); 
+    ofs << std::fixed << std::setprecision(3);
     ofs << "==== " << name << " ====\n";
     ofs << "shape,";
     for (size_t i = 0; i < shape.size(); ++i) {

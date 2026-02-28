@@ -30,7 +30,7 @@ TEST(AllOps, Correctness) {
     ASSERT_FALSE(reg.empty()) << "No ops registered. Did you forget REGISTER_OP?";
 
     // 读取文件中的算子名
-    std::unordered_set<std::string> operators_to_test = get_tested_operators("/home/exiled_code/workspce/gemm_demo/test_op_name.sh");
+    std::unordered_set<std::string> operators_to_test = get_tested_operators("./test_op_name.sh");
     for (auto &e : reg) {
         if (operators_to_test.empty() || operators_to_test.find(e.name) != operators_to_test.end()) {
             SCOPED_TRACE("Op: " + e.name);
@@ -54,7 +54,7 @@ TEST(AllOps, Performance) {
     ASSERT_FALSE(reg.empty()) << "No ops registered. Did you forget REGISTER_OP?";
 
     // 读取文件中的算子名
-    std::unordered_set<std::string> operators_to_test = get_tested_operators("/home/exiled_code/workspce/gemm_demo/test_op_name.sh");
+    std::unordered_set<std::string> operators_to_test = get_tested_operators("./test_op_name.sh");
 
     for (auto &e : reg) {
         if (operators_to_test.empty() || operators_to_test.find(e.name) != operators_to_test.end()) {
