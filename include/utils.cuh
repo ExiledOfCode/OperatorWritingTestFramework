@@ -56,7 +56,7 @@ static size_t numel(const std::vector<int> &shape) {
     return t;
 }
 
-static void dump_tensor_csv(std::ofstream &ofs, const std::string &name, const float *data, const std::vector<int> &shape) {
+static void dump_tensor_csv(std::ofstream &ofs, const std::string &name, const float *data, const std::vector<size_t> &shape) {
     ofs << std::fixed << std::setprecision(3);
     ofs << "==== " << name << " ====\n";
     ofs << "shape,";
@@ -121,7 +121,7 @@ static void dump_tensor_csv(std::ofstream &ofs, const std::string &name, const f
 struct DumpItem {
     std::string name;
     const float *ptr;
-    std::vector<int> shape;
+    std::vector<size_t> shape;
 };
 
 inline void dump_to_csv_any(const std::string &filename, const std::vector<DumpItem> &items) {

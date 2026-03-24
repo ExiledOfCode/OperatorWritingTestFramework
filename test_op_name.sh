@@ -24,4 +24,13 @@
 # reduce_demo7
 # reduce_demo8
 
-transpose_demo3
+# transpose_demo1
+# transpose_demo2
+# transpose_demo3
+# transpose_demo4
+
+
+topk_demo1
+topk_reduce
+
+

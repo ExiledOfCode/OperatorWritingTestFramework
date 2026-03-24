@@ -1,0 +1,109 @@
+# Benchmark config for the CUDA operator framework.
+# 这个文件就是你平时主要改的入口。
+#
+# 规则很简单：
+# 1. global 控制全局默认行为
+# 2. ops 里每一项就是一个要测的算子
+# 3. 一个 op 可以用 edge 做区间扫描，也可以用 shapes 精确指定形状
+
+global:
+  # 报告输出目录。每次运行会先清空这个目录再重写。
+  report_dir: reports/latest
+
+  # benchmark 预热和正式迭代次数
+  warmup: 5
+  iters: 20
+
+  # 随机种子
+  seed: 123
+
+  # 是否做正确性检查
+  check_correctness: true
+
+  # baseline 是否也做正确性检查
+  check_baselines_correctness: true
+
+ops:
+  # - name: softmax
+  #   baselines:
+  #     - softmax_grid_sync
+  #   edge:
+  #     from: 1048576
+  #     to: 16777216
+  #     stride: 1048576
+
+  # 下面这些先保留做模板，需要恢复时把注释去掉即可。
+
+  # 例子 1: 向量算子，扫 N
+  # - name: vector_add
+  #   edge:
+  #     from: 1048576
+  #     to: 16777216
+  #     stride: 1048576
+
+  # 例子 2: GEMM，扫 M/N/K，并和 cuBLAS/CUTLASS 对比
+  # - name: gemm_demo1
+  #   baselines:
+  #     - cublas_gemm_f32
+  #     - cutlass_gemm_f32
+  #   edge:
+  #     from: 256
+  #     to: 1024
+  #     stride: 256
+
+  # 例子 3: 不扫区间，直接指定几个明确 shape
+  - name: frame_gemm_demo8_128x128x8_tile_thread4val
+    baselines:
+      - cublas_gemm_f32
+      # - frame_gemm_demo8_128x128x8_tile_thread4val
+    shapes:
+      - name: small256
+        M: 256
+        N: 256
+        K: 256
+      - name: medium512
+        M: 512
+        N: 512
+        K: 512
+      - name: large1024
+        M: 1024
+        N: 1024
+        K: 1024
+      - name: large4096
+        M: 4096
+        N: 4096
+        K: 4096
+
+  # 例子 4: transpose，edge 会一起扫 M/N
+  # - name: transpose_demo1
+  #   edge:
+  #     from: 256
+  #     to: 2048
+  #     stride: 256
+
+  # 例子 5: reduce，固定 K，只扫 M
+  # - name: reduce_demo6
+  #   params:
+  #     K: 4096
+  #   edge:
+  #     from: 256
+  #     to: 4096
+  #     stride: 256
+
+  # 例子 6: topk_row，固定 K，只扫 edge 轴
+  # - name: topk_demo1
+  #   params:
+  #     K: 16
+  #   edge:
+  #     from: 128
+  #     to: 1024
+  #     stride: 128
+
+  # 例子 7: topk_1d，固定 K，只扫 N
+  # - name: topk_reduce
+  #   params:
+  #     K: 16
+  #   edge:
+  #     from: 1048576
+  #     to: 16777216
+  #     stride: 1048576

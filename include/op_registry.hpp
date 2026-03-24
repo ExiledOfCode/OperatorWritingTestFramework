@@ -1,4 +1,6 @@
 #pragma once
+
+#include <cstddef>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -6,28 +8,50 @@
 #include <vector>
 
 struct CorrectnessResult {
-    bool ok;
-    double metric;
+    bool ok = false;
+    double metric = 0.0;
     std::string metric_name;
-    double threshold;
+    double threshold = 0.0;
     std::string note;
 };
 
-struct PerfResult {
-    double ms;             // GPU 执行时间（毫秒）
-    double cpu_ms;         // CPU 执行时间（毫秒）
-    std::string unit_name; // 性能单位（如 GB/s, TFLOP/s）
-    double unit_value;     // 性能值（带宽或吞吐量）
-    std::string note;      // 其他说明信息
+struct MetricEntry {
+    std::string name;
+    double value = 0.0;
+    std::string unit;
+};
 
-    size_t input_size;                              // 输入数据大小（字节）
-    size_t output_size;                             // 输出数据大小（字节）
-    std::vector<std::vector<size_t>> input_format;  // 输入的形状
-    std::vector<std::vector<size_t>> output_format; // 输出的形状
+struct PerfResult {
+    double ms = 0.0;
+    double cpu_ms = 0.0;
+    std::string unit_name;
+    double unit_value = 0.0;
+    std::string note;
+
+    size_t input_size = 0;
+    size_t output_size = 0;
+    std::vector<std::vector<size_t>> input_format;
+    std::vector<std::vector<size_t>> output_format;
+    std::vector<MetricEntry> extra_metrics;
+};
+
+struct ParamSpec {
+    std::string name;
+    size_t default_value = 0;
+};
+
+struct OpMetadata {
+    std::string name;
+    std::string kind;
+    std::vector<ParamSpec> params;
+    std::vector<std::string> edge_axes;
+    std::vector<std::string> baselines;
+    std::string description;
 };
 
 struct OpEntry {
     std::string name;
+    OpMetadata meta;
     std::function<CorrectnessResult()> correctness;
     std::function<PerfResult()> performance;
 };
@@ -44,28 +68,22 @@ inline void register_op_entry(OpEntry e) {
 }
 
 template <class CorrectFn, class PerfFn>
-inline void register_op_t(const char *name, CorrectFn &&c, PerfFn &&p) {
-    OpEntry e;
-    e.name = name;
-    e.correctness = std::function<CorrectnessResult()>(std::forward<CorrectFn>(c));
-    e.performance = std::function<PerfResult()>(std::forward<PerfFn>(p));
-    register_op_entry(std::move(e));
+inline void register_op_t(OpMetadata meta, CorrectFn &&correct_fn, PerfFn &&perf_fn) {
+    OpEntry entry;
+    entry.name = meta.name;
+    entry.meta = std::move(meta);
+    entry.correctness = std::function<CorrectnessResult()>(std::forward<CorrectFn>(correct_fn));
+    entry.performance = std::function<PerfResult()>(std::forward<PerfFn>(perf_fn));
+    register_op_entry(std::move(entry));
 }
 
-// 你现在用的：直接塞 lambda
-#define REGISTER_OP(NAME, CORRECT_FN, PERF_FN)                                                                                                                 \
-    namespace {                                                                                                                                                \
-    struct _OpReg_##__LINE__ {                                                                                                                                 \
-        _OpReg_##__LINE__() { register_op_t((NAME), (CORRECT_FN), (PERF_FN)); }                                                                                \
-    };                                                                                                                                                         \
-    static _OpReg_##__LINE__ _opreg_instance_##__LINE__;                                                                                                       \
-    }
+#define OPFW_CONCAT_INNER(a, b) a##b
+#define OPFW_CONCAT(a, b) OPFW_CONCAT_INNER(a, b)
 
-// 新增：塞“两个启动函数”（更清爽）
-#define REGISTER_OP_FUNCS(NAME, CORRECT_FUNC, PERF_FUNC)                                                                                                       \
+#define OPFW_REGISTER_ENTRY(ENTRY_EXPR)                                                                                                                         \
     namespace {                                                                                                                                                \
-    struct _OpRegF_##__LINE__ {                                                                                                                                \
-        _OpRegF_##__LINE__() { register_op_t((NAME), (CORRECT_FUNC), (PERF_FUNC)); }                                                                           \
+    struct OPFW_CONCAT(_OpReg_, __LINE__) {                                                                                                                   \
+        OPFW_CONCAT(_OpReg_, __LINE__)() { register_op_entry((ENTRY_EXPR)); }                                                                                 \
     };                                                                                                                                                         \
-    static _OpRegF_##__LINE__ _opregf_instance_##__LINE__;                                                                                                     \
+    static OPFW_CONCAT(_OpReg_, __LINE__) OPFW_CONCAT(_opreg_instance_, __LINE__);                                                                           \
     }
